@@ -28,6 +28,7 @@ import javax.xml.bind.annotation.XmlAccessorType;
 import ru.runa.wfe.task.Task;
 import ru.runa.wfe.task.TaskDeadlineUtils;
 import ru.runa.wfe.user.Actor;
+import ru.runa.wfe.user.DelegationGroup;
 import ru.runa.wfe.user.Executor;
 import ru.runa.wfe.user.Group;
 import ru.runa.wfe.var.dto.WfVariable;
@@ -65,6 +66,7 @@ public class WfTask implements Serializable {
     private boolean firstOpen;
     private boolean acquiredBySubstitution;
     private Integer multitaskIndex;
+    private boolean readOnly;
 
     // map is not usable in web services
     private final List<WfVariable> variables = Lists.newArrayList();
@@ -167,6 +169,10 @@ public class WfTask implements Serializable {
         return escalated;
     }
 
+    public boolean isDelegated() {
+        return owner instanceof DelegationGroup;
+    }
+
     public boolean isGroupAssigned() {
         return owner instanceof Group;
     }
@@ -177,6 +183,14 @@ public class WfTask implements Serializable {
 
     public Integer getMultitaskIndex() {
         return multitaskIndex;
+    }
+
+    public boolean isReadOnly() {
+        return readOnly;
+    }
+
+    public void setReadOnly(boolean readOnly) {
+        this.readOnly = readOnly;
     }
 
     public void addVariable(WfVariable variable) {

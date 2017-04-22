@@ -73,7 +73,7 @@ public class TaskLogic extends WFCommonLogic {
     @Autowired
     private WfTaskFactory taskObjectFactory;
     @Autowired
-    private ITaskListBuilder taskListBuilder;
+    private TaskListBuilder taskListBuilder;
     @Autowired
     private TaskAssigner taskAssigner;
     @Autowired
@@ -193,10 +193,9 @@ public class TaskLogic extends WFCommonLogic {
 
     public WfTask getTask(User user, Long taskId) {
         Task task = taskDAO.getNotNull(taskId);
-        if (!executorLogic.isAdministrator(user)) {
-            checkCanParticipate(user.getActor(), task);
-        }
-        return taskObjectFactory.create(task, user.getActor(), false, null);
+        WfTask wfTask = taskObjectFactory.create(task, user.getActor(), false, null);
+        wfTask.setReadOnly(getTaskParticipationRole(user.getActor(), task) == null);
+        return wfTask;
     }
 
     public Long getProcessId(User user, Long taskId) {
@@ -208,6 +207,9 @@ public class TaskLogic extends WFCommonLogic {
     }
 
     public List<WfTask> getTasks(User user, BatchPresentation batchPresentation) {
+        if (batchPresentation.getClassPresentation() instanceof TaskObservableClassPresentation) {
+            return taskListBuilder.getObservableTasks(user.getActor(), batchPresentation);
+        }
         if (!executorLogic.isAdministrator(user)) {
             throw new AuthorizationException(user + " is not Administrator");
         }
@@ -330,4 +332,5 @@ public class TaskLogic extends WFCommonLogic {
         }
         return result;
     }
+
 }

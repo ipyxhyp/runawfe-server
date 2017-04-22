@@ -12,13 +12,6 @@ import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 
-import com.google.common.base.Function;
-import com.google.common.base.Objects;
-import com.google.common.base.Preconditions;
-import com.google.common.base.Splitter;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
-
 import ru.runa.wfe.audit.ProcessLog;
 import ru.runa.wfe.audit.TaskEscalationLog;
 import ru.runa.wfe.audit.dao.IProcessLogDAO;
@@ -36,30 +29,46 @@ import ru.runa.wfe.execution.dao.NodeProcessDAO;
 import ru.runa.wfe.execution.dao.ProcessDAO;
 import ru.runa.wfe.lang.ProcessDefinition;
 import ru.runa.wfe.presentation.BatchPresentation;
+import ru.runa.wfe.presentation.FieldDescriptor;
+import ru.runa.wfe.presentation.filter.FilterCriteria;
 import ru.runa.wfe.presentation.hibernate.CompilerParameters;
 import ru.runa.wfe.presentation.hibernate.IBatchPresentationCompilerFactory;
 import ru.runa.wfe.presentation.hibernate.RestrictionsToOwners;
+import ru.runa.wfe.security.Permission;
+import ru.runa.wfe.security.dao.PermissionDAO;
 import ru.runa.wfe.ss.Substitution;
 import ru.runa.wfe.ss.SubstitutionCriteria;
 import ru.runa.wfe.ss.TerminatorSubstitution;
 import ru.runa.wfe.ss.logic.ISubstitutionLogic;
 import ru.runa.wfe.task.Task;
+import ru.runa.wfe.task.TaskObservableClassPresentation;
 import ru.runa.wfe.task.cache.TaskCache;
 import ru.runa.wfe.task.dao.TaskDAO;
 import ru.runa.wfe.task.dto.IWfTaskFactory;
 import ru.runa.wfe.task.dto.WfTask;
 import ru.runa.wfe.user.Actor;
+import ru.runa.wfe.user.ActorPermission;
 import ru.runa.wfe.user.EscalationGroup;
 import ru.runa.wfe.user.Executor;
 import ru.runa.wfe.user.ExecutorDoesNotExistException;
+import ru.runa.wfe.user.ExecutorPermission;
 import ru.runa.wfe.user.Group;
+import ru.runa.wfe.user.GroupPermission;
 import ru.runa.wfe.user.dao.IExecutorDAO;
+import ru.runa.wfe.user.logic.ExecutorLogic;
 import ru.runa.wfe.var.Variable;
 import ru.runa.wfe.var.dao.VariableDAO;
 
+import com.google.common.base.Function;
+import com.google.common.base.Objects;
+import com.google.common.base.Preconditions;
+import com.google.common.base.Splitter;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
+
 /**
  * Task list builder component.
- *
+ * 
  * @author Dofs
  * @since 4.0
  */
@@ -92,9 +101,13 @@ public class TaskListBuilder implements ITaskListBuilder {
     private NodeProcessDAO nodeProcessDAO;
     @Autowired
     private VariableDAO variableDAO;
+    @Autowired
+    private PermissionDAO permissionDAO;
+    @Autowired
+    private ExecutorLogic executorLogic;
 
-    public TaskListBuilder(TaskCache cache) {
-        taskCache = cache;
+    public TaskListBuilder(TaskCache taskCache) {
+        this.taskCache = taskCache;
     }
 
     @Override
@@ -131,9 +144,63 @@ public class TaskListBuilder implements ITaskListBuilder {
         return result;
     }
 
+    public List<WfTask> getObservableTasks(Actor actor, BatchPresentation batchPresentation) {
+        Preconditions.checkNotNull(batchPresentation, "batchPresentation");
+        Preconditions.checkArgument(batchPresentation.getClassPresentation() instanceof TaskObservableClassPresentation);
+        List<TaskInListState> tasksState = loadObservableTasks(actor, batchPresentation);
+        List<String> variableNames = batchPresentation.getDynamicFieldsToDisplay(true);
+        Map<Process, Map<String, Variable<?>>> variables = variableDAO.getVariables(getTasksProcesses(tasksState), variableNames);
+        HashSet<Long> openedTasks = new HashSet<Long>(taskDAO.getOpenedTasks(actor.getId(), getTasksIds(tasksState)));
+        List<WfTask> result = new ArrayList<WfTask>();
+        for (TaskInListState state : tasksState) {
+            WfTask wfTask = taskObjectFactory.create(state.getTask(), state.getActor(), state.isAcquiredBySubstitution(), null,
+                    !openedTasks.contains(state.getTask().getId()));
+            if (!Utils.isNullOrEmpty(variableNames)) {
+                Process process = state.getTask().getProcess();
+                ProcessDefinition processDefinition = processDefinitionLoader.getDefinition(process.getDeployment().getId());
+                ExecutionContext executionContext = new ExecutionContext(processDefinition, process, variables, false);
+                for (String variableName : variableNames) {
+                    wfTask.addVariable(executionContext.getVariableProvider().getVariable(variableName));
+                }
+            }
+            result.add(wfTask);
+        }
+        return result;
+    }
+
+    public Set<Executor> getObservableExecutors(Actor actor, String observableExecutorNameTemplate) {
+        Set<Executor> executorsByMembership = getExecutorsToGetTasks(actor, false);
+        if (Utils.isNullOrEmpty(observableExecutorNameTemplate)) {
+            observableExecutorNameTemplate = "%";
+        }
+        observableExecutorNameTemplate = observableExecutorNameTemplate.replace('*', '%').replace('?', '_');
+        List<Executor> executorsLikeName = executorDAO.getExecutorsLikeName(observableExecutorNameTemplate);
+        Set<Executor> observableExecutors = Sets.newHashSet();
+        for (Executor executor : executorsLikeName) {
+            addObservableExecutor(executor, observableExecutors);
+        }
+        Set<Executor> executorsToGetTasks = Sets.newHashSet();
+        if (executorDAO.isAdministrator(actor)) {
+            executorsToGetTasks.addAll(observableExecutors);
+        } else {
+            for (Executor executor : executorsByMembership) {
+                for (Executor taskOwner : observableExecutors) {
+                    boolean taskOwnerIsActor = taskOwner instanceof Actor;
+                    Permission viewTasksPermission = taskOwnerIsActor ? ActorPermission.VIEW_TASKS : GroupPermission.VIEW_TASKS;
+                    if (permissionDAO.permissionExists(executor, viewTasksPermission, taskOwner)
+                            && (taskOwnerIsActor || permissionDAO.permissionExists(executor, GroupPermission.LIST_GROUP, taskOwner))
+                            && permissionDAO.permissionExists(executor, ExecutorPermission.READ, taskOwner)) {
+                        executorsToGetTasks.add(taskOwner);
+                    }
+                }
+            }
+        }
+        return executorsToGetTasks;
+    }
+
     /**
      * Get processes, which tasks is in user tasks list.
-     *
+     * 
      * @param tasksState
      *            User tasks list.
      * @return set of processes, which tasks is in user tasks list.
@@ -149,7 +216,7 @@ public class TaskListBuilder implements ITaskListBuilder {
 
     /**
      * Get tasks id, which tasks is in user tasks list.
-     *
+     * 
      * @param tasksState
      *            User tasks list.
      * @return list of tasks id, which tasks is in user tasks list.
@@ -165,7 +232,7 @@ public class TaskListBuilder implements ITaskListBuilder {
 
     /**
      * Load administrative tasks if actor is in process administrators group.
-     *
+     * 
      * @param actor
      *            Actor, which task list is created.
      * @return List of administrative tasks or empty list if actor is not in process administrators group. Always not null.
@@ -188,7 +255,7 @@ public class TaskListBuilder implements ITaskListBuilder {
 
     /**
      * Load tasks for me, for all my groups, for actors, substituted by me.
-     *
+     * 
      * @param actor
      *            Actor, which task list is created.
      * @param batchPresentation
@@ -217,6 +284,47 @@ public class TaskListBuilder implements ITaskListBuilder {
             }
         }
         return tasksState;
+    }
+
+    private void addObservableExecutor(Executor executor, Set<Executor> executors) {
+        executors.add(executor);
+        if (executor instanceof Group) {
+            for (Executor e : executorDAO.getGroupChildren(((Group) executor))) {
+                addObservableExecutor(e, executors);
+            }
+        }
+    }
+
+    /**
+     * Load observable tasks.
+     * 
+     * @param actor
+     *            Actor, which task list is created.
+     * @param batchPresentation
+     *            {@link BatchPresentation} with parameters for loading tasks.
+     * @return List of tasks. Always not null.
+     */
+    private List<TaskInListState> loadObservableTasks(Actor actor, BatchPresentation batchPresentation) {
+        String observableExecutorNameTemplate = getObservableExecutorNameTemplate(batchPresentation);
+        Set<Executor> executorsToGetTasks = getObservableExecutors(actor, observableExecutorNameTemplate);
+        List<TaskInListState> tasksState = Lists.newArrayList();
+        if (!executorsToGetTasks.isEmpty()) {
+            List<Task> tasks = loadTasks(batchPresentation, executorsToGetTasks);
+            for (Task task : tasks) {
+                tasksState.add(new TaskInListState(task, actor, false));
+            }
+        }
+        return tasksState;
+    }
+
+    private String getObservableExecutorNameTemplate(BatchPresentation batchPresentation) {
+        for (Map.Entry<Integer, FilterCriteria> entry : batchPresentation.getFilteredFields().entrySet()) {
+            FieldDescriptor field = batchPresentation.getAllFields()[entry.getKey()];
+            if (field.displayName.equals(TaskObservableClassPresentation.TASK_OBSERVABLE_EXECUTOR)) {
+                return entry.getValue().getFilterTemplates()[0];
+            }
+        }
+        return "";
     }
 
     @SuppressWarnings("unchecked")
@@ -406,8 +514,8 @@ public class TaskListBuilder implements ITaskListBuilder {
                 }
                 continue;
             }
-            int substitutionRules =
-                    checkSubstitutionRules(criteria, substitutionRule.getValue(), executionContext, task, assignedActor, substitutorActor);
+            int substitutionRules = checkSubstitutionRules(criteria, substitutionRule.getValue(), executionContext, task, assignedActor,
+                    substitutorActor);
             if ((substitutionRules & SUBSTITUTION_APPLIES) == 0) {
                 continue;
             }

@@ -40,6 +40,7 @@ import ru.runa.wfe.task.TaskAlreadyAcceptedException;
 import ru.runa.wfe.task.TaskCompletionBy;
 import ru.runa.wfe.task.TaskCompletionInfo;
 import ru.runa.wfe.task.TaskDoesNotExistException;
+import ru.runa.wfe.task.TaskObservableClassPresentation;
 import ru.runa.wfe.task.dto.WfTask;
 import ru.runa.wfe.task.dto.WfTaskFactory;
 import ru.runa.wfe.user.Actor;

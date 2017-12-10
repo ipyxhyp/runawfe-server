@@ -1,5 +1,6 @@
 package ru.runa.wfe.definition.par;
 
+import java.util.Comparator;
 import java.util.List;
 
 import org.apache.commons.logging.LogFactory;
@@ -7,7 +8,14 @@ import org.dom4j.Document;
 import org.dom4j.Element;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import com.google.common.base.Function;
+import com.google.common.base.Joiner;
+import com.google.common.base.Strings;
+import com.google.common.collect.Lists;
+
+import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.commons.BackCompatibilityClassNames;
+import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.dao.LocalizationDAO;
 import ru.runa.wfe.commons.xml.XmlUtils;
 import ru.runa.wfe.definition.IFileDataProvider;
@@ -18,11 +26,6 @@ import ru.runa.wfe.var.VariableStoreType;
 import ru.runa.wfe.var.format.FormatCommons;
 import ru.runa.wfe.var.format.VariableFormat;
 import ru.runa.wfe.var.format.VariableFormatContainer;
-
-import com.google.common.base.Function;
-import com.google.common.base.Joiner;
-import com.google.common.base.Strings;
-import com.google.common.collect.Lists;
 
 public class VariableDefinitionParser implements ProcessArchiveParser {
     private static final String FORMAT = "format";
@@ -58,6 +61,7 @@ public class VariableDefinitionParser implements ProcessArchiveParser {
             UserType type = new UserType(typeElement.attributeValue(NAME));
             processDefinition.addUserType(type);
         }
+        sortByUsing(typeElements);
         for (Element typeElement : typeElements) {
             UserType type = processDefinition.getUserTypeNotNull(typeElement.attributeValue(NAME));
             List<Element> attributeElements = typeElement.elements(VARIABLE);
@@ -80,6 +84,29 @@ public class VariableDefinitionParser implements ProcessArchiveParser {
         }
     }
 
+    private void sortByUsing(List<Element> elements) {
+        elements.sort(new Comparator<Element>() {
+            @Override
+            public int compare(Element e1, Element e2) {
+                String name2 = e2.attributeValue(NAME);
+                List<Element> attributes = e1.elements(VARIABLE);
+                for (Element e : attributes) {
+                    if (e.attributeValue(FORMAT).endsWith(name2 + VariableFormatContainer.COMPONENT_PARAMETERS_END)) {
+                        return 1;
+                    }
+                }
+                String name1 = e1.attributeValue(NAME);
+                attributes = e2.elements(VARIABLE);
+                for (Element e : attributes) {
+                    if (e.attributeValue(FORMAT).endsWith(name1 + VariableFormatContainer.COMPONENT_PARAMETERS_END)) {
+                        return -1;
+                    }
+                }
+                return 0;
+            }
+        });
+    }
+
     private VariableDefinition parse(ProcessDefinition processDefinition, Element element) {
         String name = element.attributeValue(NAME);
         String scriptingName = element.attributeValue(SCRIPTING_NAME, name);
@@ -98,8 +125,8 @@ public class VariableDefinitionParser implements ProcessArchiveParser {
                 formatLabel = localizationDAO.getLocalized(variableDefinition.getFormatClassName());
                 formatLabel += VariableFormatContainer.COMPONENT_PARAMETERS_START;
                 String[] componentClassNames = variableDefinition.getFormatComponentClassNames();
-                formatLabel += Joiner.on(VariableFormatContainer.COMPONENT_PARAMETERS_DELIM).join(
-                        Lists.transform(Lists.newArrayList(componentClassNames), new Function<String, String>() {
+                formatLabel += Joiner.on(VariableFormatContainer.COMPONENT_PARAMETERS_DELIM)
+                        .join(Lists.transform(Lists.newArrayList(componentClassNames), new Function<String, String>() {
 
                             @Override
                             public String apply(String input) {
@@ -121,7 +148,12 @@ public class VariableDefinitionParser implements ProcessArchiveParser {
                 Object value = variableFormat.parse(stringDefaultValue);
                 variableDefinition.setDefaultValue(value);
             } catch (Exception e) {
-                LogFactory.getLog(getClass()).error("Unable to format default value '" + name + "' in " + processDefinition, e);
+                if (!SystemProperties.isVariablesInvalidDefaultValuesAllowed() || processDefinition.getDeployment().getCreateDate()
+                        .after(SystemProperties.getVariablesInvalidDefaultValuesAllowedBefore())) {
+                    throw new InternalApplicationException("Unable to parse default value '" + stringDefaultValue, e);
+                } else {
+                    LogFactory.getLog(getClass()).error("Unable to format default value '" + name + "' in " + processDefinition, e);
+                }
             }
         }
         String storeTypeString = element.attributeValue(STORE_TYPE);

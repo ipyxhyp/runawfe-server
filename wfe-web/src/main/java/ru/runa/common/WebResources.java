@@ -23,12 +23,12 @@ import java.util.Set;
 
 import org.apache.commons.logging.LogFactory;
 
+import com.google.common.base.Strings;
+import com.google.common.collect.Sets;
+
 import ru.runa.wfe.commons.ClassLoaderUtil;
 import ru.runa.wfe.commons.PropertyResources;
 import ru.runa.wfe.commons.SystemProperties;
-
-import com.google.common.base.Strings;
-import com.google.common.collect.Sets;
 
 /**
  * Created on 30.09.2004

@@ -1,20 +1,17 @@
 package ru.runa.wfe.commons.ftl;
 
+import com.google.common.base.Joiner;
+import com.google.common.collect.Maps;
 import java.io.InputStream;
 import java.util.List;
 import java.util.Map;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.dom4j.Document;
 import org.dom4j.Element;
-
 import ru.runa.wfe.commons.ClassLoaderUtil;
 import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.xml.XmlUtils;
-
-import com.google.common.base.Joiner;
-import com.google.common.collect.Maps;
 
 @SuppressWarnings("unchecked")
 public class FreemarkerConfiguration {
@@ -26,6 +23,9 @@ public class FreemarkerConfiguration {
     private final Map<String, Class<? extends FormComponent>> map = Maps.newHashMap();
 
     private static FreemarkerConfiguration instance;
+
+    public static void forceLoadInThisClassLoader() {
+    }
 
     public static FreemarkerConfiguration getInstance() {
         if (instance == null) {

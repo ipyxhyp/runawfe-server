@@ -2,10 +2,9 @@ package ru.runa.common.web;
 
 import javax.servlet.ServletContextEvent;
 import javax.servlet.ServletContextListener;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
+import ru.runa.common.Version;
 import ru.runa.wf.logic.bot.BotStationResources;
 import ru.runa.wfe.bot.BotStation;
 import ru.runa.wfe.commons.ftl.FreemarkerConfiguration;
@@ -13,17 +12,14 @@ import ru.runa.wfe.service.BotInvokerService;
 import ru.runa.wfe.service.delegate.BotInvokerServiceDelegate;
 import ru.runa.wfe.service.delegate.Delegates;
 
-public class InitializeDBListener implements ServletContextListener {
-    private static final Log log = LogFactory.getLog(InitializeDBListener.class);
+public class InitializeListener implements ServletContextListener {
+    private static final Log log = LogFactory.getLog(InitializeListener.class);
 
     @Override
     public void contextInitialized(ServletContextEvent event) {
-        log.info("initializing database");
-        Delegates.getInitializerService().onSystemStartup();
-        // this is used not only for debug purpose but for initialization
-        // FreemarkerConfiguration singleton instance in current class loader
-        log.debug(FreemarkerConfiguration.getInstance().getRegistrationInfo());
-        log.info("initialization done in class loader " + Thread.currentThread().getContextClassLoader());
+        Version.init();
+        FreemarkerConfiguration.forceLoadInThisClassLoader();
+        log.info("initialization done in " + Thread.currentThread().getContextClassLoader());
         try {
             if (BotStationResources.isAutoStartBotStations()) {
                 for (BotStation botStation : Delegates.getBotService().getBotStations()) {

@@ -13,7 +13,6 @@ import org.dom4j.Element;
 import ru.runa.wfe.commons.ClassLoaderUtil;
 import ru.runa.wfe.commons.xml.XmlUtils;
 
-@SuppressWarnings("unchecked")
 public class FreemarkerConfiguration {
     private static Log log = LogFactory.getLog(FreemarkerConfiguration.class);
     private static final String TAG_ELEMENT = "component";
@@ -23,12 +22,12 @@ public class FreemarkerConfiguration {
 
     static {
         ClassLoaderUtil.withExtensionResources("ftl.form.components.xml", new Function<InputStream, Object>() {
-
             @Override
             public Object apply(InputStream input) {
                 try (InputStream inputStream = input) {
                     Document document = XmlUtils.parseWithoutValidation(inputStream);
                     Element root = document.getRootElement();
+                    @SuppressWarnings("unchecked")
                     List<Element> tagElements = root.elements(TAG_ELEMENT);
                     for (Element tagElement : tagElements) {
                         String name = tagElement.attributeValue(NAME_ATTR);

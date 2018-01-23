@@ -1,17 +1,14 @@
 package ru.runa.wfe.commons;
 
+import com.google.common.base.Preconditions;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
 import java.util.ArrayList;
-import java.util.Calendar;
 import java.util.List;
-
 import ru.runa.wfe.execution.logic.IProcessExecutionListener;
 import ru.runa.wfe.lang.NodeType;
 import ru.runa.wfe.security.Permission;
 import ru.runa.wfe.security.SecuredObjectType;
-
-import com.google.common.base.Preconditions;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
 
 public class SystemProperties {
     public static final String CONFIG_FILE_NAME = "system.properties";
@@ -23,13 +20,7 @@ public class SystemProperties {
 
     public static final String RESOURCE_EXTENSION_PREFIX = "wfe.custom.";
     public static final String DEPRECATED_PREFIX = "deprecated.";
-    @Deprecated
-    public static final Calendar SYSTEM_STARTUP_CALENDAR = Calendar.getInstance();
 
-    public static final String TIMERTASK_START_MILLIS_JOB_EXECUTION_NAME = "timertask.start.millis.job.execution";
-    public static final String TIMERTASK_PERIOD_MILLIS_JOB_EXECUTION_NAME = "timertask.period.millis.job.execution";
-    public static final String TIMERTASK_START_MILLIS_UNASSIGNED_TASKS_EXECUTION_NAME = "timertask.start.unassigned.tasks.execution";
-    public static final String TIMERTASK_PERIOD_MILLIS_UNASSIGNED_TASKS_EXECUTION_NAME = "timertask.period.millis.unassigned.tasks.execution";
     private static volatile List<IProcessExecutionListener> processExecutionListeners = null;
 
     public static PropertyResources getResources() {
@@ -104,10 +95,6 @@ public class SystemProperties {
      */
     public static String getBuildDateString() {
         return RESOURCES.getStringProperty("build.date");
-    }
-
-    public static String getStartup() {
-        return CalendarUtil.formatDateTime(SYSTEM_STARTUP_CALENDAR);
     }
 
     public static String getAdministratorName() {

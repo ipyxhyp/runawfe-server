@@ -1,12 +1,10 @@
 package ru.runa.wfe.commons.dbpatch.impl;
 
+import com.google.common.collect.Lists;
 import java.sql.Types;
 import java.util.LinkedList;
 import java.util.List;
-
-import org.hibernate.Session;
 import org.springframework.beans.factory.annotation.Autowired;
-
 import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.dbpatch.DBPatch;
 import ru.runa.wfe.commons.dbpatch.IDbPatchPostProcessor;
@@ -18,8 +16,6 @@ import ru.runa.wfe.user.Actor;
 import ru.runa.wfe.user.Executor;
 import ru.runa.wfe.user.Group;
 import ru.runa.wfe.user.dao.ExecutorDAO;
-
-import com.google.common.collect.Lists;
 
 public class CreateReportsTables extends DBPatch implements IDbPatchPostProcessor {
 
@@ -83,7 +79,7 @@ public class CreateReportsTables extends DBPatch implements IDbPatchPostProcesso
     }
 
     @Override
-    public void postExecute(Session session) throws Exception {
+    public void postExecute() throws Exception {
         if (permissionDAO.getPrivilegedExecutors(SecuredObjectType.REPORT).isEmpty()) {
             log.info("Adding " + SecuredObjectType.REPORT + " tokens message hash");
             String administratorName = SystemProperties.getAdministratorName();

@@ -1,19 +1,19 @@
 package ru.runa.wfe.commons.dbpatch;
 
-import java.util.List;
-
-import org.apache.commons.logging.Log;
-import org.apache.commons.logging.LogFactory;
-import org.hibernate.Session;
-import org.hibernate.dialect.Dialect;
-
-import ru.runa.wfe.InternalApplicationException;
-import ru.runa.wfe.commons.ApplicationContextFactory;
-import ru.runa.wfe.commons.DBType;
-
 import com.google.common.base.Joiner;
 import com.google.common.base.Strings;
 import com.google.common.collect.Lists;
+import java.util.List;
+import org.apache.commons.logging.Log;
+import org.apache.commons.logging.LogFactory;
+import org.hibernate.CacheMode;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.dialect.Dialect;
+import org.springframework.beans.factory.annotation.Autowired;
+import ru.runa.wfe.InternalApplicationException;
+import ru.runa.wfe.commons.ApplicationContextFactory;
+import ru.runa.wfe.commons.DBType;
 
 /**
  * Interface for database patch (Applied during version update).
@@ -24,12 +24,16 @@ public abstract class DBPatch {
     protected Log log = LogFactory.getLog(getClass());
     protected final Dialect dialect = ApplicationContextFactory.getDialect();
     protected final DBType dbType = ApplicationContextFactory.getDBType();
+    @Autowired
+    protected SessionFactory sessionFactory;
 
-    /**
-     * Execute patch DDL statements before DML (non-transacted mode in most databases).
-     */
-    public final void executeDDLBefore(Session session) throws Exception {
+    public void execute() throws Exception {
+        Session session = sessionFactory.getCurrentSession();
         executeDDL(session, "[DDLBefore]", getDDLQueriesBefore());
+        session.setCacheMode(CacheMode.IGNORE);
+        executeDML(session);
+        session.flush();
+        executeDDL(session, "[DDLAfter]", getDDLQueriesAfter());
     }
 
     protected List<String> getDDLQueriesBefore() {
@@ -45,13 +49,6 @@ public abstract class DBPatch {
      */
     public void executeDML(Session session) throws Exception {
 
-    }
-
-    /**
-     * Execute patch DDL statements after DML (non-transacted mode in most databases).
-     */
-    public final void executeDDLAfter(Session session) throws Exception {
-        executeDDL(session, "[DDLAfter]", getDDLQueriesAfter());
     }
 
     protected List<String> getDDLQueriesAfter() {
@@ -292,6 +289,11 @@ public abstract class DBPatch {
 
     protected final String getDDLTruncateTableUsingDelete(String tableName) {
         return "DELETE FROM " + tableName;
+    }
+
+    @Override
+    public String toString() {
+        return getClass().getSimpleName();
     }
 
     public static class ColumnDef {

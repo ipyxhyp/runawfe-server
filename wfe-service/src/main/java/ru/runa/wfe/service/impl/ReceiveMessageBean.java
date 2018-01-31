@@ -17,10 +17,12 @@
  */
 package ru.runa.wfe.service.impl;
 
+import com.google.common.base.Objects;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Sets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import javax.annotation.Resource;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
@@ -32,12 +34,10 @@ import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageListener;
 import javax.jms.ObjectMessage;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
-
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.audit.ReceiveMessageLog;
 import ru.runa.wfe.audit.dao.ProcessLogDAO;
@@ -58,9 +58,6 @@ import ru.runa.wfe.service.interceptors.PerformanceObserver;
 import ru.runa.wfe.var.IVariableProvider;
 import ru.runa.wfe.var.VariableMapping;
 
-import com.google.common.base.Objects;
-import com.google.common.collect.Lists;
-
 @MessageDriven(activationConfig = { @ActivationConfigProperty(propertyName = "destination", propertyValue = "queue/bpmMessages"),//
         @ActivationConfigProperty(propertyName = "destinationType", propertyValue = "javax.jms.Queue") })
 @TransactionManagement(TransactionManagementType.CONTAINER)
@@ -68,6 +65,7 @@ import com.google.common.collect.Lists;
 @SuppressWarnings("unchecked")
 public class ReceiveMessageBean implements MessageListener {
     private static Log log = LogFactory.getLog(ReceiveMessageBean.class);
+    private static final Set<Long> lockedProcessIds = Sets.newHashSet();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -150,8 +148,26 @@ public class ReceiveMessageBean implements MessageListener {
                 }
             } else {
                 log.debug("Handling " + messageString);
-                for (ReceiveMessageData data : handlers) {
-                    handleMessage(data, message);
+                try {
+                    synchronized (lockedProcessIds) {
+                        for (ReceiveMessageData data : handlers) {
+                            if (lockedProcessIds.contains(data.processId)) {
+                                log.debug("deferring execution request due to lock on " + data.processId);
+                                context.setRollbackOnly();
+                                return;
+                            }
+                            lockedProcessIds.add(data.processId);
+                        }
+                    }
+                    for (ReceiveMessageData data : handlers) {
+                        handleMessage(data, message);
+                    }
+                } finally {
+                    synchronized (lockedProcessIds) {
+                        for (ReceiveMessageData data : handlers) {
+                            lockedProcessIds.remove(data.processId);
+                        }
+                    }
                 }
             }
         } catch (Exception e) {

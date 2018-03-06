@@ -1,21 +1,20 @@
 package ru.runa.wfe.var.dao;
 
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
-import com.google.common.collect.Lists;
 import ru.runa.wfe.commons.SQLCommons;
 import ru.runa.wfe.commons.SQLCommons.StringEqualsExpression;
 import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.Utils;
 import ru.runa.wfe.commons.dao.GenericDAO;
+import ru.runa.wfe.execution.ExecutionStatus;
 import ru.runa.wfe.execution.Process;
 import ru.runa.wfe.var.Variable;
-
-import com.google.common.collect.Maps;
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
 public class VariableDAO extends GenericDAO<Variable> {
@@ -28,6 +27,13 @@ public class VariableDAO extends GenericDAO<Variable> {
         StringEqualsExpression expression = SQLCommons.getStringEqualsExpression(variableNamePattern);
         String query = "from Variable where name " + expression.getComparisonOperator() + " ? and stringValue = ?";
         return getHibernateTemplate().find(query, expression.getValue(), stringValue);
+    }
+
+    public List<Variable<?>> findInActiveProcessesByNameLikeAndStringValueEqualTo(String variableNamePattern, String stringValue) {
+        StringEqualsExpression expression = SQLCommons.getStringEqualsExpression(variableNamePattern);
+        String query = "from Variable where name " + expression.getComparisonOperator() + " ? and stringValue = ?";
+        query += " and process.id in (select id from Process where executionStatus = ?)";
+        return getHibernateTemplate().find(query, expression.getValue(), stringValue, ExecutionStatus.ACTIVE);
     }
 
     /**
@@ -92,9 +98,9 @@ public class VariableDAO extends GenericDAO<Variable> {
         }
         List<Variable<?>> list = new ArrayList<>();
         for (List<Process> processesPart : Lists.partition(Lists.newArrayList(processes), SystemProperties.getDatabaseParametersCount())) {
-            list.addAll(getHibernateTemplate().findByNamedParam("from Variable where process in (:processes) and name in (:variableNames)",///
-                    new String[]{"processes", "variableNames"},///
-                    new Object[]{processesPart, variableNames}));
+            list.addAll(getHibernateTemplate().findByNamedParam("from Variable where process in (:processes) and name in (:variableNames)",// /
+                    new String[] { "processes", "variableNames" },// /
+                    new Object[] { processesPart, variableNames }));
         }
         for (Variable<?> variable : list) {
             result.get(variable.getProcess()).put(variable.getName(), variable);

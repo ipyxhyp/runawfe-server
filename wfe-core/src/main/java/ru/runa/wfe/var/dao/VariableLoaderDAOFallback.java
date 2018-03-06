@@ -3,7 +3,6 @@ package ru.runa.wfe.var.dao;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
 import ru.runa.wfe.execution.Process;
 import ru.runa.wfe.var.Variable;
 import ru.runa.wfe.var.dto.WfVariable;
@@ -54,6 +53,12 @@ public class VariableLoaderDAOFallback extends AbstractVariableLoader {
     @Override
     public List<Variable<?>> findByNameLikeAndStringValueEqualTo(String variableNamePattern, String stringValue) {
         return dao.findByNameLikeAndStringValueEqualTo(variableNamePattern, stringValue);
+    }
+
+    @Override
+    public List<Variable<?>> findInActiveProcessesByNameLikeAndStringValueEqualTo(String variableNamePattern, String stringValue) {
+        // CREATE INDEX IX_PROCESS_STATUS ON BPM_PROCESS (EXECUTION_STATUS);
+        return dao.findInActiveProcessesByNameLikeAndStringValueEqualTo(variableNamePattern, stringValue);
     }
 
     @Override

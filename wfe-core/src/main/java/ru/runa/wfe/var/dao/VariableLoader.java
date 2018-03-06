@@ -2,7 +2,6 @@ package ru.runa.wfe.var.dao;
 
 import java.util.List;
 import java.util.Map;
-
 import ru.runa.wfe.execution.Process;
 import ru.runa.wfe.lang.ProcessDefinition;
 import ru.runa.wfe.var.Variable;
@@ -33,8 +32,21 @@ public interface VariableLoader {
      * @param stringValue
      *            Exact string variable value.
      * @return all variable, found by criteria.
+     * @deprecated use findInActiveProcessesByNameLikeAndStringValueEqualTo
      */
+    @Deprecated
     List<Variable<?>> findByNameLikeAndStringValueEqualTo(String variableNamePattern, String stringValue);
+
+    /**
+     * Find all variables in active processes, which name is like namePattern and value is equals to stringValue.
+     *
+     * @param variableNamePattern
+     *            Variable name pattern, which may be exact match or contains wildcards for like search.
+     * @param stringValue
+     *            Exact string variable value.
+     * @return all variable, found by criteria.
+     */
+    List<Variable<?>> findInActiveProcessesByNameLikeAndStringValueEqualTo(String variableNamePattern, String stringValue);
 
     /**
      * Load all variables for given process.

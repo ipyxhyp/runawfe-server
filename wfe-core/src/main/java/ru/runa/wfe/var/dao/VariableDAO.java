@@ -32,8 +32,8 @@ public class VariableDAO extends GenericDAO<Variable> {
     public List<Variable<?>> findInActiveProcessesByNameLikeAndStringValueEqualTo(String variableNamePattern, String stringValue) {
         StringEqualsExpression expression = SQLCommons.getStringEqualsExpression(variableNamePattern);
         String query = "from Variable where name " + expression.getComparisonOperator() + " ? and stringValue = ?";
-        query += " and process.id in (select id from Process where executionStatus = ?)";
-        return getHibernateTemplate().find(query, expression.getValue(), stringValue, ExecutionStatus.ACTIVE);
+        query += " and process.id in (select id from Process where executionStatus != ?)";
+        return getHibernateTemplate().find(query, expression.getValue(), stringValue, ExecutionStatus.ENDED);
     }
 
     /**

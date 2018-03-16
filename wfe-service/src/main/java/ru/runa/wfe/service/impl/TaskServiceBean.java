@@ -1,8 +1,9 @@
 package ru.runa.wfe.service.impl;
 
+import com.google.common.base.Preconditions;
 import java.util.List;
 import java.util.Map;
-
+import java.util.Set;
 import javax.ejb.Stateless;
 import javax.ejb.TransactionManagement;
 import javax.ejb.TransactionManagementType;
@@ -12,10 +13,8 @@ import javax.jws.WebParam;
 import javax.jws.WebResult;
 import javax.jws.WebService;
 import javax.jws.soap.SOAPBinding;
-
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
-
 import ru.runa.wfe.execution.logic.ExecutionLogic;
 import ru.runa.wfe.lang.ProcessDefinition;
 import ru.runa.wfe.presentation.BatchPresentation;
@@ -33,8 +32,6 @@ import ru.runa.wfe.task.dto.WfTask;
 import ru.runa.wfe.task.logic.TaskLogic;
 import ru.runa.wfe.user.Executor;
 import ru.runa.wfe.user.User;
-
-import com.google.common.base.Preconditions;
 
 @Stateless(name = "TaskServiceBean")
 @TransactionManagement(TransactionManagementType.BEAN)
@@ -147,6 +144,17 @@ public class TaskServiceBean implements TaskServiceLocal, TaskServiceRemote, Tas
         Preconditions.checkArgument(taskId != null, "taskId");
         Preconditions.checkArgument(newOwners != null, "newOwners");
         taskLogic.delegateTask(user, taskId, currentOwner, keepCurrentOwners, newOwners);
+    }
+
+    @WebMethod(exclude = true)
+    @Override
+    public void delegateTasks(User user, Set<Long> taskIds, boolean keepCurrentOwners, List<? extends Executor> newOwners) {
+        Preconditions.checkArgument(user != null);
+        Preconditions.checkArgument(taskIds != null);
+        for (Long taskId : taskIds) {
+            WfTask task = taskLogic.getTask(user, taskId);
+            taskLogic.delegateTask(user, taskId, task.getOwner(), keepCurrentOwners, newOwners);
+        }
     }
 
     @Override

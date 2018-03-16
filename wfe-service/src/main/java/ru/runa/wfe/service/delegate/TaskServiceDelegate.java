@@ -3,7 +3,6 @@ package ru.runa.wfe.service.delegate;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import ru.runa.wfe.presentation.BatchPresentation;
 import ru.runa.wfe.service.TaskService;
 import ru.runa.wfe.task.dto.WfTask;
@@ -111,18 +110,18 @@ public class TaskServiceDelegate extends EJB3Delegate implements TaskService {
     }
 
     @Override
-    public List<WfTask> getUnassignedTasks(User user) {
+    public void delegateTasks(User user, Set<Long> taskIds, boolean keepCurrentOwners, List<? extends Executor> newOwners) {
         try {
-            return getTaskService().getUnassignedTasks(user);
+            getTaskService().delegateTasks(user, taskIds, keepCurrentOwners, newOwners);
         } catch (Exception e) {
             throw handleException(e);
         }
     }
 
     @Override
-    public void delegateTasks(User user, Set<Long> taskIds, boolean keepCurrentOwners, List<? extends Executor> newOwners) {
+    public List<WfTask> getUnassignedTasks(User user) {
         try {
-            getTaskService().delegateTasks(user, taskIds, keepCurrentOwners, newOwners);
+            return getTaskService().getUnassignedTasks(user);
         } catch (Exception e) {
             throw handleException(e);
         }

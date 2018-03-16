@@ -62,6 +62,7 @@ import ru.runa.wfe.commons.dbpatch.impl.AddSubprocessBindingDatePatch;
 import ru.runa.wfe.commons.dbpatch.impl.AddTitleAndDepartmentColumnsToActorPatch;
 import ru.runa.wfe.commons.dbpatch.impl.AddTokenErrorDataPatch;
 import ru.runa.wfe.commons.dbpatch.impl.AddTokenMessageSelectorPatch;
+import ru.runa.wfe.commons.dbpatch.impl.AddTransactionalBotSupport;
 import ru.runa.wfe.commons.dbpatch.impl.AddVariableUniqueKeyPatch;
 import ru.runa.wfe.commons.dbpatch.impl.CreateAdminScriptTables;
 import ru.runa.wfe.commons.dbpatch.impl.CreateAggregatedLogsTables;
@@ -168,6 +169,7 @@ public class InitializerLogic implements ApplicationListener<ContextRefreshedEve
         patches.add(EmptyPatch.class);
         patches.add(AddTokenMessageSelectorPatch.class);
         patches.add(AddSubprocessBindingDatePatch.class);
+        patches.add(AddTransactionalBotSupport.class);
         dbPatches = Collections.unmodifiableList(patches);
     };
 

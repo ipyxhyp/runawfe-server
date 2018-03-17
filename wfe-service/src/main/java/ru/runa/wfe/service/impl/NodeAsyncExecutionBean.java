@@ -1,8 +1,7 @@
 package ru.runa.wfe.service.impl;
 
-import javax.ejb.EJB;
-
 import java.util.Set;
+
 import javax.annotation.Resource;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
@@ -14,10 +13,12 @@ import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.MessageListener;
 import javax.jms.ObjectMessage;
+
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
+
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.audit.dao.ProcessLogDAO;
 import ru.runa.wfe.commons.ITransactionListener;
@@ -31,6 +32,7 @@ import ru.runa.wfe.lang.Node;
 import ru.runa.wfe.lang.ProcessDefinition;
 import ru.runa.wfe.service.interceptors.EjbExceptionSupport;
 import ru.runa.wfe.service.interceptors.PerformanceObserver;
+
 import com.google.common.base.Objects;
 import com.google.common.collect.Sets;
 
@@ -45,10 +47,14 @@ import com.google.common.collect.Sets;
 public class NodeAsyncExecutionBean implements MessageListener {
     private static final Log log = LogFactory.getLog(NodeAsyncExecutionBean.class);
     private static final Set<Long> lockedProcessIds = Sets.newHashSet();
+    @Autowired
+    private TokenDAO tokenDAO;
+    @Autowired
+    private IProcessDefinitionLoader processDefinitionLoader;
+    @Autowired
+    private ProcessLogDAO processLogDAO;
     @Resource
     private MessageDrivenContext context;
-    @EJB
-    private NodeAsyncExecutorBean nodeAsyncExecutorBean;
 
     @Override
     public void onMessage(Message jmsMessage) {
@@ -72,7 +78,7 @@ public class NodeAsyncExecutionBean implements MessageListener {
                 }
                 lockedProcessIds.add(processId);
             }
-            nodeAsyncExecutorBean.handleMessage(processId, tokenId, nodeId);
+            handleMessage(processId, tokenId, nodeId);
             for (ITransactionListener listener : TransactionListeners.get()) {
                 try {
                     // TODO transaction in progress, so timeout must be long enough
@@ -91,4 +97,23 @@ public class NodeAsyncExecutionBean implements MessageListener {
         }
     }
 
+    private void handleMessage(Long processId, Long tokenId, String nodeId) throws JMSException {
+        Token token = tokenDAO.getNotNull(tokenId);
+        if (token.getProcess().hasEnded()) {
+            log.debug("Ignored execution in ended " + token.getProcess());
+            return;
+        }
+        if (!Objects.equal(nodeId, token.getNodeId())) {
+            throw new InternalApplicationException(token + " expected to be in node " + nodeId);
+        }
+        ProcessDefinition processDefinition = processDefinitionLoader.getDefinition(token.getProcess());
+        Node node = processDefinition.getNodeNotNull(token.getNodeId());
+        try {
+            ExecutionContext executionContext = new ExecutionContext(processDefinition, token);
+            node.handle(executionContext);
+        } catch (Throwable th) {
+            log.error(processId + ":" + tokenId, th);
+            Utils.sendNodeAsyncFailedExecutionMessage(tokenId, th);
+        }
+    }
 }

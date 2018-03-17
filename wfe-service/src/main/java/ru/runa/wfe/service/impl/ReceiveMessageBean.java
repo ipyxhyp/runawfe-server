@@ -18,11 +18,14 @@
 package ru.runa.wfe.service.impl;
 
 import com.google.common.base.Objects;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
@@ -66,6 +69,10 @@ import ru.runa.wfe.var.VariableMapping;
 public class ReceiveMessageBean implements MessageListener {
     private static Log log = LogFactory.getLog(ReceiveMessageBean.class);
     private static final Set<Long> lockedProcessIds = Sets.newHashSet();
+    // this cache is required due to locking inside transaction
+    // locking outside transaction is impossible due to CMT requirements for rollback (exception is not treated as normal behaviour)
+    // TODO extract to ProcessExecutionSynchronizer?
+    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder().expireAfterWrite(3, TimeUnit.SECONDS).build();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -149,10 +156,15 @@ public class ReceiveMessageBean implements MessageListener {
             } else {
                 log.debug("Handling " + messageString);
                 try {
-                    synchronized (lockedProcessIds) {
+                    synchronized (ReceiveMessageBean.class) {
                         for (ReceiveMessageData data : handlers) {
                             if (lockedProcessIds.contains(data.processId)) {
                                 log.debug("deferring execution request due to lock on " + data.processId);
+                                context.setRollbackOnly();
+                                return;
+                            }
+                            if (trackedProcessIds.getIfPresent(data.processId) != null) {
+                                log.debug("deferring execution request due to track on " + data.processId);
                                 context.setRollbackOnly();
                                 return;
                             }
@@ -163,9 +175,10 @@ public class ReceiveMessageBean implements MessageListener {
                         handleMessage(data, message);
                     }
                 } finally {
-                    synchronized (lockedProcessIds) {
+                    synchronized (ReceiveMessageBean.class) {
                         for (ReceiveMessageData data : handlers) {
                             lockedProcessIds.remove(data.processId);
+                            trackedProcessIds.put(data.processId, data.processId);
                         }
                     }
                 }

@@ -24,6 +24,7 @@ import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.audit.dao.ProcessLogDAO;
 import ru.runa.wfe.commons.ITransactionListener;
+import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.TransactionListeners;
 import ru.runa.wfe.commons.Utils;
 import ru.runa.wfe.definition.dao.IProcessDefinitionLoader;
@@ -48,7 +49,8 @@ public class NodeAsyncExecutionBean implements MessageListener {
     private static final Set<Long> lockedProcessIds = Sets.newHashSet();
     // this cache is required due to locking inside transaction
     // locking outside transaction is impossible due to CMT requirements for rollback (exception is not treated as normal behaviour)
-    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder().expireAfterWrite(3, TimeUnit.SECONDS).build();
+    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder()
+            .expireAfterWrite(SystemProperties.getProcessExecutionTrackingTimeoutInSeconds(), TimeUnit.SECONDS).build();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -78,12 +80,12 @@ public class NodeAsyncExecutionBean implements MessageListener {
                     context.setRollbackOnly();
                     return;
                 }
-                if (trackedProcessIds.getIfPresent(processId) != null) {
-                    log.debug("deferring execution request due to track on " + processId);
-                    context.setRollbackOnly();
-                    return;
-                }
                 lockedProcessIds.add(processId);
+            }
+            if (trackedProcessIds.getIfPresent(processId) != null) {
+                log.debug("deferring execution request due to track on " + processId);
+                context.setRollbackOnly();
+                return;
             }
             handleMessage(processId, tokenId, nodeId);
             for (ITransactionListener listener : TransactionListeners.get()) {
@@ -94,13 +96,13 @@ public class NodeAsyncExecutionBean implements MessageListener {
                     log.error(th);
                 }
             }
+            trackedProcessIds.put(processId, processId);
         } catch (Exception e) {
             log.error(jmsMessage, e);
             context.setRollbackOnly();
         } finally {
             synchronized (NodeAsyncExecutionBean.class) {
                 lockedProcessIds.remove(processId);
-                trackedProcessIds.put(processId, processId);
             }
         }
     }

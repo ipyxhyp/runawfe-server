@@ -313,6 +313,10 @@ public class SystemProperties {
         return RESOURCES.getBooleanProperty("process.execution.node.async.default", false);
     }
 
+    public static int getProcessExecutionTrackingTimeoutInSeconds() {
+        return RESOURCES.getIntegerProperty("process.execution.tracking.timeout.seconds", 1);
+    }
+
     public static boolean isProcessSuspensionEnabled() {
         return RESOURCES.getBooleanProperty("process.suspension.enabled", true);
     }

@@ -72,7 +72,8 @@ public class ReceiveMessageBean implements MessageListener {
     // this cache is required due to locking inside transaction
     // locking outside transaction is impossible due to CMT requirements for rollback (exception is not treated as normal behaviour)
     // TODO extract to ProcessExecutionSynchronizer?
-    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder().expireAfterWrite(3, TimeUnit.SECONDS).build();
+    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder()
+            .expireAfterWrite(SystemProperties.getProcessExecutionTrackingTimeoutInSeconds(), TimeUnit.SECONDS).build();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -174,11 +175,13 @@ public class ReceiveMessageBean implements MessageListener {
                     for (ReceiveMessageData data : handlers) {
                         handleMessage(data, message);
                     }
+                    for (ReceiveMessageData data : handlers) {
+                        trackedProcessIds.put(data.processId, data.processId);
+                    }
                 } finally {
                     synchronized (ReceiveMessageBean.class) {
                         for (ReceiveMessageData data : handlers) {
                             lockedProcessIds.remove(data.processId);
-                            trackedProcessIds.put(data.processId, data.processId);
                         }
                     }
                 }

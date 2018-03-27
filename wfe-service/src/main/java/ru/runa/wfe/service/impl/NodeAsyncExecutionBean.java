@@ -82,7 +82,8 @@ public class NodeAsyncExecutionBean implements MessageListener {
                 }
                 lockedProcessIds.add(processId);
             }
-            if (trackedProcessIds.getIfPresent(processId) != null) {
+            Long trackedTokenId = trackedProcessIds.getIfPresent(processId);
+            if (trackedTokenId != null && !Objects.equal(trackedTokenId, tokenId)) {
                 log.debug("deferring execution request due to track on " + processId);
                 context.setRollbackOnly();
                 return;
@@ -96,7 +97,7 @@ public class NodeAsyncExecutionBean implements MessageListener {
                     log.error(th);
                 }
             }
-            trackedProcessIds.put(processId, processId);
+            trackedProcessIds.put(processId, tokenId);
         } catch (Exception e) {
             log.error(jmsMessage, e);
             context.setRollbackOnly();

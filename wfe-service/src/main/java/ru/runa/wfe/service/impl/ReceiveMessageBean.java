@@ -44,6 +44,7 @@ import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.audit.ReceiveMessageLog;
 import ru.runa.wfe.audit.dao.ProcessLogDAO;
+import ru.runa.wfe.commons.ApplicationContextFactory;
 import ru.runa.wfe.commons.Errors;
 import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.Utils;
@@ -172,6 +173,8 @@ public class ReceiveMessageBean implements MessageListener {
                             lockedProcessIds.add(data.processId);
                         }
                     }
+                    // clear loaded tokens and processes
+                    ApplicationContextFactory.getSessionFactory().getCurrentSession().clear();
                     for (ReceiveMessageData data : handlers) {
                         handleMessage(data, message);
                     }
@@ -186,6 +189,8 @@ public class ReceiveMessageBean implements MessageListener {
                     }
                 }
             }
+        } catch (ConcurrentTokenExecutionException e) {
+            context.setRollbackOnly();
         } catch (Exception e) {
             log.error("", e);
             context.setRollbackOnly();
@@ -196,7 +201,8 @@ public class ReceiveMessageBean implements MessageListener {
         log.debug("Handling " + message + " for " + data);
         Token token = tokenDAO.getNotNull(data.tokenId);
         if (!Objects.equal(token.getNodeId(), data.node.getNodeId())) {
-            throw new InternalApplicationException(token + " not in " + data.node.getNodeId());
+            log.warn("Concurrent execution detected for " + token);
+            throw new ConcurrentTokenExecutionException();
         }
         ProcessDefinition processDefinition = processDefinitionLoader.getDefinition(token.getProcess().getDeployment().getId());
         ExecutionContext executionContext = new ExecutionContext(processDefinition, token);
@@ -246,5 +252,10 @@ public class ReceiveMessageBean implements MessageListener {
             }
             return null;
         }
+    }
+
+    private static class ConcurrentTokenExecutionException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
     }
 }

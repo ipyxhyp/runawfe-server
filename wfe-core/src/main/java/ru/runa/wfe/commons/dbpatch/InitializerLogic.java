@@ -17,8 +17,6 @@
  */
 package ru.runa.wfe.commons.dbpatch;
 
-import ru.runa.wfe.commons.logic.LocalizationParser;
-
 import com.google.common.collect.Lists;
 import java.io.InputStream;
 import java.util.Collections;
@@ -59,6 +57,7 @@ import ru.runa.wfe.commons.dbpatch.impl.AddSubprocessBindingDatePatch;
 import ru.runa.wfe.commons.dbpatch.impl.AddTitleAndDepartmentColumnsToActorPatch;
 import ru.runa.wfe.commons.dbpatch.impl.AddTokenErrorDataPatch;
 import ru.runa.wfe.commons.dbpatch.impl.AddTokenMessageSelectorPatch;
+import ru.runa.wfe.commons.dbpatch.impl.AddTransactionalBotSupport;
 import ru.runa.wfe.commons.dbpatch.impl.AddVariableUniqueKeyPatch;
 import ru.runa.wfe.commons.dbpatch.impl.CreateAdminScriptTables;
 import ru.runa.wfe.commons.dbpatch.impl.CreateAggregatedLogsTables;
@@ -73,6 +72,7 @@ import ru.runa.wfe.commons.dbpatch.impl.TaskCreateLogSeverityChangedPatch;
 import ru.runa.wfe.commons.dbpatch.impl.TaskEndDateRemovalPatch;
 import ru.runa.wfe.commons.dbpatch.impl.TaskOpenedByExecutorsPatch;
 import ru.runa.wfe.commons.dbpatch.impl.TransitionLogPatch;
+import ru.runa.wfe.commons.logic.LocalizationParser;
 import ru.runa.wfe.definition.dao.IProcessDefinitionLoader;
 import ru.runa.wfe.execution.dao.ProcessDAO;
 import ru.runa.wfe.execution.dao.TokenDAO;
@@ -160,6 +160,7 @@ public class InitializerLogic implements ApplicationListener<ContextRefreshedEve
         patches.add(EmptyPatch.class);
         patches.add(AddTokenMessageSelectorPatch.class);
         patches.add(AddSubprocessBindingDatePatch.class);
+        patches.add(AddTransactionalBotSupport.class);
         dbPatches = Collections.unmodifiableList(patches);
     };
 

@@ -18,11 +18,14 @@
 package ru.runa.wfe.service.impl;
 
 import com.google.common.base.Objects;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Sets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
@@ -41,6 +44,7 @@ import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.audit.ReceiveMessageLog;
 import ru.runa.wfe.audit.dao.ProcessLogDAO;
+import ru.runa.wfe.commons.ApplicationContextFactory;
 import ru.runa.wfe.commons.Errors;
 import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.Utils;
@@ -66,6 +70,11 @@ import ru.runa.wfe.var.VariableMapping;
 public class ReceiveMessageBean implements MessageListener {
     private static Log log = LogFactory.getLog(ReceiveMessageBean.class);
     private static final Set<Long> lockedProcessIds = Sets.newHashSet();
+    // this cache is required due to locking inside transaction
+    // locking outside transaction is impossible due to CMT requirements for rollback (exception is not treated as normal behaviour)
+    // TODO extract to ProcessExecutionSynchronizer?
+    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder()
+            .expireAfterWrite(SystemProperties.getProcessExecutionTrackingTimeoutInSeconds(), TimeUnit.SECONDS).build();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -159,8 +168,13 @@ public class ReceiveMessageBean implements MessageListener {
                             lockedProcessIds.add(data.processId);
                         }
                     }
+                    // clear loaded tokens and processes
+                    ApplicationContextFactory.getSessionFactory().getCurrentSession().clear();
                     for (ReceiveMessageData data : handlers) {
                         handleMessage(data, message);
+                    }
+                    for (ReceiveMessageData data : handlers) {
+                        trackedProcessIds.put(data.processId, data.processId);
                     }
                 } finally {
                     synchronized (lockedProcessIds) {
@@ -170,6 +184,8 @@ public class ReceiveMessageBean implements MessageListener {
                     }
                 }
             }
+        } catch (ConcurrentTokenExecutionException e) {
+            context.setRollbackOnly();
         } catch (Exception e) {
             log.error("", e);
             context.setRollbackOnly();
@@ -180,7 +196,8 @@ public class ReceiveMessageBean implements MessageListener {
         log.debug("Handling " + message + " for " + data);
         Token token = tokenDAO.getNotNull(data.tokenId);
         if (!Objects.equal(token.getNodeId(), data.node.getNodeId())) {
-            throw new InternalApplicationException(token + " not in " + data.node.getNodeId());
+            log.warn("Concurrent execution detected for " + token);
+            throw new ConcurrentTokenExecutionException();
         }
         ProcessDefinition processDefinition = processDefinitionLoader.getDefinition(token.getProcess().getDeployment().getId());
         ExecutionContext executionContext = new ExecutionContext(processDefinition, token);
@@ -230,5 +247,10 @@ public class ReceiveMessageBean implements MessageListener {
             }
             return null;
         }
+    }
+
+    private static class ConcurrentTokenExecutionException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+
     }
 }

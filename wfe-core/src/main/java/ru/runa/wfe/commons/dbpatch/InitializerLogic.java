@@ -17,8 +17,6 @@
  */
 package ru.runa.wfe.commons.dbpatch;
 
-import ru.runa.wfe.commons.logic.LocalizationParser;
-
 import com.google.common.collect.Lists;
 import java.io.InputStream;
 import java.util.Collections;
@@ -74,6 +72,7 @@ import ru.runa.wfe.commons.dbpatch.impl.TaskCreateLogSeverityChangedPatch;
 import ru.runa.wfe.commons.dbpatch.impl.TaskEndDateRemovalPatch;
 import ru.runa.wfe.commons.dbpatch.impl.TaskOpenedByExecutorsPatch;
 import ru.runa.wfe.commons.dbpatch.impl.TransitionLogPatch;
+import ru.runa.wfe.commons.logic.LocalizationParser;
 import ru.runa.wfe.definition.dao.IProcessDefinitionLoader;
 import ru.runa.wfe.execution.dao.ProcessDAO;
 import ru.runa.wfe.execution.dao.TokenDAO;

@@ -158,15 +158,10 @@ public class ReceiveMessageBean implements MessageListener {
             } else {
                 log.debug("Handling " + messageString);
                 try {
-                    synchronized (ReceiveMessageBean.class) {
+                    synchronized (lockedProcessIds) {
                         for (ReceiveMessageData data : handlers) {
                             if (lockedProcessIds.contains(data.processId)) {
                                 log.debug("deferring execution request due to lock on " + data.processId);
-                                context.setRollbackOnly();
-                                return;
-                            }
-                            if (trackedProcessIds.getIfPresent(data.processId) != null) {
-                                log.debug("deferring execution request due to track on " + data.processId);
                                 context.setRollbackOnly();
                                 return;
                             }
@@ -182,7 +177,7 @@ public class ReceiveMessageBean implements MessageListener {
                         trackedProcessIds.put(data.processId, data.processId);
                     }
                 } finally {
-                    synchronized (ReceiveMessageBean.class) {
+                    synchronized (lockedProcessIds) {
                         for (ReceiveMessageData data : handlers) {
                             lockedProcessIds.remove(data.processId);
                         }

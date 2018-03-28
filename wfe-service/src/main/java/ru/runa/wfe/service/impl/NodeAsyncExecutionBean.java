@@ -74,7 +74,7 @@ public class NodeAsyncExecutionBean implements MessageListener {
                 log.debug("rejected due to redelivering");
                 return;
             }
-            synchronized (NodeAsyncExecutionBean.class) {
+            synchronized (lockedProcessIds) {
                 if (lockedProcessIds.contains(processId)) {
                     log.debug("deferring execution request due to lock on " + processId);
                     context.setRollbackOnly();
@@ -102,7 +102,7 @@ public class NodeAsyncExecutionBean implements MessageListener {
             log.error(jmsMessage, e);
             context.setRollbackOnly();
         } finally {
-            synchronized (NodeAsyncExecutionBean.class) {
+            synchronized (lockedProcessIds) {
                 lockedProcessIds.remove(processId);
             }
         }

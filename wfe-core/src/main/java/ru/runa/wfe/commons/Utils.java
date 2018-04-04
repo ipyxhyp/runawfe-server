@@ -1,5 +1,11 @@
 package ru.runa.wfe.commons;
 
+import com.google.common.base.Joiner;
+import com.google.common.base.Splitter;
+import com.google.common.base.Throwables;
+import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
+import com.google.common.collect.Sets;
 import java.util.Collections;
 import java.util.Date;
 import java.util.Enumeration;
@@ -7,7 +13,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-
 import javax.jms.Connection;
 import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
@@ -23,10 +28,8 @@ import javax.transaction.SystemException;
 import javax.transaction.Transaction;
 import javax.transaction.TransactionManager;
 import javax.transaction.UserTransaction;
-
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
-
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.commons.email.EmailConfig;
 import ru.runa.wfe.commons.error.ProcessError;
@@ -42,13 +45,6 @@ import ru.runa.wfe.var.MapVariableProvider;
 import ru.runa.wfe.var.UserTypeMap;
 import ru.runa.wfe.var.VariableMapping;
 import ru.runa.wfe.var.dto.Variables;
-
-import com.google.common.base.Joiner;
-import com.google.common.base.Splitter;
-import com.google.common.base.Throwables;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import com.google.common.collect.Sets;
 
 public class Utils {
     public static final String CATEGORY_DELIMITER = "/";
@@ -254,7 +250,7 @@ public class Utils {
         return selectors;
     }
 
-    public static void sendNodeAsyncExecutionMessage(Token token, boolean retry) {
+    public static void sendNodeAsyncExecutionMessage(Token token) {
         Connection connection = null;
         Session session = null;
         MessageProducer sender = null;
@@ -267,8 +263,7 @@ public class Utils {
             message.setLongProperty("processId", token.getProcess().getId());
             message.setLongProperty("tokenId", token.getId());
             message.setStringProperty("nodeId", token.getNodeId());
-            message.setBooleanProperty("retry", retry);
-            log.debug("sending node async execution request for " + token + ", retry=" + retry);
+            log.debug("Sending token execution request for " + token);
             sender.send(message);
         } catch (Exception e) {
             throw Throwables.propagate(e);

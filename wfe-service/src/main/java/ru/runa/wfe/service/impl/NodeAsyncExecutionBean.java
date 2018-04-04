@@ -1,11 +1,7 @@
 package ru.runa.wfe.service.impl;
 
 import com.google.common.base.Objects;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
-import com.google.common.collect.Sets;
-import java.util.Set;
-import java.util.concurrent.TimeUnit;
+import com.google.common.base.Throwables;
 import javax.annotation.Resource;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
@@ -24,7 +20,6 @@ import org.springframework.ejb.interceptor.SpringBeanAutowiringInterceptor;
 import ru.runa.wfe.InternalApplicationException;
 import ru.runa.wfe.audit.dao.ProcessLogDAO;
 import ru.runa.wfe.commons.ITransactionListener;
-import ru.runa.wfe.commons.SystemProperties;
 import ru.runa.wfe.commons.TransactionListeners;
 import ru.runa.wfe.commons.Utils;
 import ru.runa.wfe.definition.dao.IProcessDefinitionLoader;
@@ -46,11 +41,6 @@ import ru.runa.wfe.service.interceptors.PerformanceObserver;
 @Interceptors({ EjbExceptionSupport.class, PerformanceObserver.class, SpringBeanAutowiringInterceptor.class })
 public class NodeAsyncExecutionBean implements MessageListener {
     private static final Log log = LogFactory.getLog(NodeAsyncExecutionBean.class);
-    private static final Set<Long> lockedProcessIds = Sets.newHashSet();
-    // this cache is required due to locking inside transaction
-    // locking outside transaction is impossible due to CMT requirements for rollback (exception is not treated as normal behaviour)
-    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder()
-            .expireAfterWrite(SystemProperties.getProcessExecutionTrackingTimeoutInSeconds(), TimeUnit.SECONDS).build();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -62,32 +52,22 @@ public class NodeAsyncExecutionBean implements MessageListener {
 
     @Override
     public void onMessage(Message jmsMessage) {
-        Long processId = null;
+        Long processId;
+        Long tokenId;
+        String nodeId;
         try {
             ObjectMessage message = (ObjectMessage) jmsMessage;
             processId = message.getLongProperty("processId");
-            Long tokenId = message.getLongProperty("tokenId");
-            String nodeId = message.getStringProperty("nodeId");
-            log.debug("handling node async execution request: {processId=" + processId + ", tokenId=" + tokenId + ", nodeId=" + nodeId + "}");
-            boolean retry = message.getBooleanProperty("retry");
-            if (message.getJMSRedelivered() && !retry) {
-                log.debug("rejected due to redelivering");
-                return;
-            }
-            synchronized (lockedProcessIds) {
-                if (lockedProcessIds.contains(processId)) {
-                    log.debug("deferring execution request due to lock on " + processId);
-                    context.setRollbackOnly();
-                    return;
-                }
-                lockedProcessIds.add(processId);
-            }
-            Long trackedTokenId = trackedProcessIds.getIfPresent(processId);
-            if (trackedTokenId != null && !Objects.equal(trackedTokenId, tokenId)) {
-                log.debug("deferring execution request due to track on " + processId);
-                context.setRollbackOnly();
-                return;
-            }
+            tokenId = message.getLongProperty("tokenId");
+            nodeId = message.getStringProperty("nodeId");
+        } catch (JMSException e) {
+            throw Throwables.propagate(e);
+        }
+        if (!ProcessTokenSynchronization.lock(processId, tokenId)) {
+            context.setRollbackOnly();
+            return;
+        }
+        try {
             handleMessage(processId, tokenId, nodeId);
             for (ITransactionListener listener : TransactionListeners.get()) {
                 try {
@@ -97,21 +77,19 @@ public class NodeAsyncExecutionBean implements MessageListener {
                     log.error(th);
                 }
             }
-            trackedProcessIds.put(processId, tokenId);
         } catch (Exception e) {
             log.error(jmsMessage, e);
             context.setRollbackOnly();
         } finally {
-            synchronized (lockedProcessIds) {
-                lockedProcessIds.remove(processId);
-            }
+            ProcessTokenSynchronization.unlock(processId, tokenId);
         }
     }
 
     private void handleMessage(Long processId, Long tokenId, String nodeId) throws JMSException {
+        log.debug("Handling token execution request: {processId=" + processId + ", tokenId=" + tokenId + ", nodeId=" + nodeId + "}");
         Token token = tokenDAO.getNotNull(tokenId);
         if (token.getProcess().hasEnded()) {
-            log.debug("Ignored execution in ended " + token.getProcess());
+            log.debug("Ignored token execution request for ended " + token.getProcess());
             return;
         }
         if (!Objects.equal(nodeId, token.getNodeId())) {

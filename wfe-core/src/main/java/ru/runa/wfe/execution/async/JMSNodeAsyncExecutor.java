@@ -11,7 +11,7 @@ public class JMSNodeAsyncExecutor implements INodeAsyncExecutor {
 
     @Override
     public void execute(Token token, boolean retry) {
-        Utils.sendNodeAsyncExecutionMessage(token, retry);
+        Utils.sendNodeAsyncExecutionMessage(token);
     }
 
 }

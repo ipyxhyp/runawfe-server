@@ -18,14 +18,10 @@
 package ru.runa.wfe.service.impl;
 
 import com.google.common.base.Objects;
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Sets;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.TimeUnit;
 import javax.annotation.Resource;
 import javax.ejb.ActivationConfigProperty;
 import javax.ejb.MessageDriven;
@@ -69,12 +65,6 @@ import ru.runa.wfe.var.VariableMapping;
 @SuppressWarnings("unchecked")
 public class ReceiveMessageBean implements MessageListener {
     private static Log log = LogFactory.getLog(ReceiveMessageBean.class);
-    private static final Set<Long> lockedProcessIds = Sets.newHashSet();
-    // this cache is required due to locking inside transaction
-    // locking outside transaction is impossible due to CMT requirements for rollback (exception is not treated as normal behaviour)
-    // TODO extract to ProcessExecutionSynchronizer?
-    private static final Cache<Long, Long> trackedProcessIds = CacheBuilder.newBuilder()
-            .expireAfterWrite(SystemProperties.getProcessExecutionTrackingTimeoutInSeconds(), TimeUnit.SECONDS).build();
     @Autowired
     private TokenDAO tokenDAO;
     @Autowired
@@ -91,7 +81,7 @@ public class ReceiveMessageBean implements MessageListener {
         String messageString = Utils.toString(message, false);
         ErrorEventData errorEventData = null;
         try {
-            log.debug("Received " + messageString);
+            log.debug("On message request " + messageString);
             errorEventData = ErrorEventData.match(message);
             List<Token> tokens;
             if (SystemProperties.isProcessExecutionMessagePredefinedSelectorEnabled()) {
@@ -152,36 +142,22 @@ public class ReceiveMessageBean implements MessageListener {
                     log.error(errorMessage);
                     Errors.addSystemError(new InternalApplicationException(errorMessage));
                 } else {
-                    log.debug("Rejecting " + messageString);
+                    log.debug("Rejecting message request " + messageString);
                     context.setRollbackOnly();
                 }
             } else {
-                log.debug("Handling " + messageString);
+                if (!ProcessTokenSynchronization.lock(handlers)) {
+                    context.setRollbackOnly();
+                    return;
+                }
                 try {
-                    synchronized (lockedProcessIds) {
-                        for (ReceiveMessageData data : handlers) {
-                            if (lockedProcessIds.contains(data.processId)) {
-                                log.debug("deferring execution request due to lock on " + data.processId);
-                                context.setRollbackOnly();
-                                return;
-                            }
-                            lockedProcessIds.add(data.processId);
-                        }
-                    }
                     // clear loaded tokens and processes
                     ApplicationContextFactory.getSessionFactory().getCurrentSession().clear();
                     for (ReceiveMessageData data : handlers) {
                         handleMessage(data, message);
                     }
-                    for (ReceiveMessageData data : handlers) {
-                        trackedProcessIds.put(data.processId, data.processId);
-                    }
                 } finally {
-                    synchronized (lockedProcessIds) {
-                        for (ReceiveMessageData data : handlers) {
-                            lockedProcessIds.remove(data.processId);
-                        }
-                    }
+                    ProcessTokenSynchronization.unlock(handlers);
                 }
             }
         } catch (ConcurrentTokenExecutionException e) {
@@ -193,10 +169,10 @@ public class ReceiveMessageBean implements MessageListener {
     }
 
     private void handleMessage(final ReceiveMessageData data, final ObjectMessage message) throws JMSException {
-        log.debug("Handling " + message + " for " + data);
+        log.debug("Handling message request " + message + " for " + data);
         Token token = tokenDAO.getNotNull(data.tokenId);
         if (!Objects.equal(token.getNodeId(), data.node.getNodeId())) {
-            log.warn("Concurrent execution detected for " + token);
+            log.warn("Concurrent message request execution detected for " + token);
             throw new ConcurrentTokenExecutionException();
         }
         ProcessDefinition processDefinition = processDefinitionLoader.getDefinition(token.getProcess().getDeployment().getId());
@@ -217,10 +193,10 @@ public class ReceiveMessageBean implements MessageListener {
         data.node.leave(executionContext);
     }
 
-    private static class ReceiveMessageData {
-        private Long processId;
-        private Long tokenId;
-        private BaseMessageNode node;
+    public static class ReceiveMessageData {
+        public final Long processId;
+        public final Long tokenId;
+        public final BaseMessageNode node;
 
         public ReceiveMessageData(ExecutionContext executionContext, BaseMessageNode node) {
             this.processId = executionContext.getProcess().getId();
